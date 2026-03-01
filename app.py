@@ -1,3 +1,4 @@
+import os
 from flask import Flask, render_template, request, redirect, session, flash
 from pymongo import MongoClient
 from datetime import datetime
@@ -8,21 +9,27 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.environ.get("SECRET_KEY", "fallback_secret")
 
-# ================== MONGODB ==================
-MONGO_URI = "mongodb+srv://amir:amir7890@cluster0.mb7ruie.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-client = MongoClient(MONGO_URI)
+# ================== ENV VARIABLES ==================
+MONGO_URI = os.environ.get("MONGO_URI")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL")
+EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+
+# ================== MONGODB CONNECTION ==================
+try:
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    client.server_info()
+    print("MongoDB Connected Successfully")
+except Exception as e:
+    print("MongoDB Connection Failed:", e)
 
 db = client["change_management_db"]
 requests_collection = db["change_requests"]
 users_collection = db["users"]
 
-# ================== EMAIL CONFIG ==================
-ADMIN_EMAIL = "amirkhan91522@gmail.com"
-EMAIL_SENDER = "amirkhan91522@gmail.com"
-EMAIL_PASSWORD = "hvwdtkowejgjhpww"   # APP PASSWORD (NO SPACES)
-
+# ================== EMAIL FUNCTION ==================
 def send_email(to_email, subject, body):
     try:
         msg = MIMEMultipart()
@@ -39,7 +46,6 @@ def send_email(to_email, subject, body):
 
         print("Email sent to:", to_email)
         return True
-
     except Exception as e:
         print("Email Error:", e)
         return False
@@ -60,8 +66,7 @@ def home():
     return render_template("index.html",
                            requests=requests_data,
                            role=session["role"],
-                           username=session["username"],
-                           admin_email=ADMIN_EMAIL)
+                           username=session["username"])
 
 # ================== REGISTER ==================
 @app.route("/register", methods=["GET", "POST"])
@@ -138,7 +143,6 @@ def add_request():
 
     requests_collection.insert_one(data)
 
-    # Email to Admin
     subject = "New Change Request Submitted"
     body = f"""
     <h3>New Change Request Submitted</h3>
@@ -149,7 +153,7 @@ def add_request():
 
     send_email(ADMIN_EMAIL, subject, body)
 
-    flash("Request submitted & Email sent to Admin!", "success")
+    flash("Request submitted successfully!", "success")
     return redirect("/")
 
 # ================== UPDATE STATUS ==================
@@ -164,15 +168,12 @@ def update_status(id, status):
         flash("Request not found!", "danger")
         return redirect("/")
 
-    # Update status
     requests_collection.update_one(
         {"_id": ObjectId(id)},
         {"$set": {"status": status}}
     )
 
     user_email = request_data.get("created_by_email")
-
-    print("User Email from DB:", user_email)
 
     if user_email:
         subject = "Your Change Request Status Updated"
@@ -181,10 +182,9 @@ def update_status(id, status):
         <p><b>Title:</b> {request_data['title']}</p>
         <p><b>New Status:</b> {status}</p>
         """
-
         send_email(user_email, subject, body)
 
-    flash("Status Updated & Email sent to User!", "success")
+    flash("Status updated successfully!", "success")
     return redirect("/")
 
 # ================== LOGOUT ==================
@@ -193,7 +193,7 @@ def logout():
     session.clear()
     return redirect("/login")
 
-# ================== CREATE DEFAULT ADMIN ==================
+# ================== CREATE ADMIN ==================
 def create_admin():
     if not users_collection.find_one({"username": "admin"}):
         users_collection.insert_one({
@@ -207,4 +207,4 @@ def create_admin():
 create_admin()
 
 if __name__ == "__main__":
-    app.run(debug=True, use_reloader=False)
+    app.run()
