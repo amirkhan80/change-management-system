@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, session, flash
 from pymongo import MongoClient
 from datetime import datetime
@@ -8,16 +9,20 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "fallback_secret")
+# ================== LOAD ENV ==================
+load_dotenv()
 
 # ================== ENV VARIABLES ==================
-MONGO_URI = os.environ.get("MONGO_URI")
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL")
-EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+MONGO_URI = os.getenv("MONGO_URI")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
+EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret")
 
-# ================== MONGODB CONNECTION ==================
+app = Flask(__name__)
+app.secret_key = SECRET_KEY
+
+# ================== MONGODB ==================
 try:
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     client.server_info()
@@ -31,6 +36,10 @@ users_collection = db["users"]
 
 # ================== EMAIL FUNCTION ==================
 def send_email(to_email, subject, body):
+    if not EMAIL_SENDER or not EMAIL_PASSWORD:
+        print("Email credentials missing")
+        return False
+
     try:
         msg = MIMEMultipart()
         msg["From"] = EMAIL_SENDER
@@ -46,6 +55,7 @@ def send_email(to_email, subject, body):
 
         print("Email sent to:", to_email)
         return True
+
     except Exception as e:
         print("Email Error:", e)
         return False
@@ -207,4 +217,4 @@ def create_admin():
 create_admin()
 
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
