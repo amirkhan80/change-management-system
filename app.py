@@ -10,8 +10,6 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # ================== LOAD ENV ==================
-load_dotenv()
-
 # ================== ENV VARIABLES ==================
 MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
@@ -217,4 +215,5 @@ def create_admin():
 create_admin()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    if __name__ == "__main__":
+     app.run()
