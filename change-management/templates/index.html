@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Enterprise Change Management</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+
+<style>
+body{
+    background: linear-gradient(135deg,#1f4037,#99f2c8);
+    min-height:100vh;
+}
+
+.navbar{
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(10px);
+}
+
+.glass-card{
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(15px);
+    border-radius:20px;
+    padding:30px;
+    color:white;
+    box-shadow:0 8px 32px rgba(0,0,0,0.3);
+}
+
+.dashboard-box{
+    padding:20px;
+    border-radius:15px;
+    color:white;
+    text-align:center;
+    font-weight:bold;
+}
+
+.total{background:#007bff;}
+.pending{background:#ffc107;}
+.approved{background:#28a745;}
+.rejected{background:#dc3545;}
+
+.table{
+    background:white;
+    border-radius:15px;
+    overflow:hidden;
+}
+
+.table th{
+    background:#343a40;
+    color:white;
+}
+
+.btn-custom{
+    border-radius:25px;
+}
+
+.form-control, .form-select{
+    border-radius:10px;
+}
+
+.email-info{
+    font-size:14px;
+    margin-top:10px;
+    color:#fff;
+    opacity:0.9;
+}
+</style>
+</head>
+
+<body>
+
+<nav class="navbar navbar-dark px-4 py-3">
+<span class="navbar-brand fs-4">
+<i class="fa-solid fa-building"></i> Change Management System
+</span>
+<a href="/logout" class="btn btn-outline-light btn-sm btn-custom">
+<i class="fa-solid fa-right-from-bracket"></i> Logout
+</a>
+</nav>
+
+<div class="container mt-4">
+
+<!-- FLASH MESSAGE -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    <div class="alert alert-{{ category }} mt-3">
+        {{ message }}
+    </div>
+  {% endfor %}
+{% endwith %}
+
+<!-- DASHBOARD -->
+<div class="row g-3 mb-4">
+<div class="col-md-3 col-6">
+<div class="dashboard-box total">
+Total<br><h4>{{ requests|length }}</h4>
+</div>
+</div>
+
+<div class="col-md-3 col-6">
+<div class="dashboard-box pending">
+Pending<br><h4>{{ requests|selectattr("status","equalto","Pending")|list|length }}</h4>
+</div>
+</div>
+
+<div class="col-md-3 col-6">
+<div class="dashboard-box approved">
+Approved<br><h4>{{ requests|selectattr("status","equalto","Approved")|list|length }}</h4>
+</div>
+</div>
+
+<div class="col-md-3 col-6">
+<div class="dashboard-box rejected">
+Rejected<br><h4>{{ requests|selectattr("status","equalto","Rejected")|list|length }}</h4>
+</div>
+</div>
+</div>
+
+{% if role == "user" %}
+<div class="glass-card mb-4">
+<h5 class="mb-4"><i class="fa-solid fa-plus-circle"></i> Submit Change Request</h5>
+
+<form method="POST" action="/add">
+
+<!-- CATEGORY -->
+<div class="mb-3">
+<label class="form-label">Select Category</label>
+<select name="category" class="form-select" required>
+<option value="">Select Category</option>
+<option value="Software">Software</option>
+<option value="Hardware">Hardware</option>
+<option value="Services">Services</option>
+</select>
+</div>
+
+<!-- TITLE -->
+<div class="mb-3">
+<label class="form-label">Change Title</label>
+<input type="text" name="title" class="form-control" placeholder="Enter change title" required>
+</div>
+
+<!-- DESCRIPTION -->
+<div class="mb-3">
+<label class="form-label">Detailed Description</label>
+<textarea name="description" class="form-control" rows="3" placeholder="Enter detailed description" required></textarea>
+</div>
+
+<!-- RISK -->
+<div class="mb-4">
+<label class="form-label">Risk Level</label>
+<select name="risk" class="form-select" required>
+<option value="">Select Risk Level</option>
+<option value="Low">Low</option>
+<option value="Medium">Medium</option>
+<option value="High">High</option>
+</select>
+</div>
+
+<!-- SUBMIT -->
+<button class="btn btn-light w-100 btn-custom">
+<i class="fa-solid fa-paper-plane"></i> Submit Request
+</button>
+
+<!-- ADMIN EMAIL INFO -->
+<p class="email-info text-center">
+📩 Notification will be sent to Admin: <b>{{ admin_email }}</b>
+</p>
+
+</form>
+</div>
+{% endif %}
+
+<h5 class="text-white mb-3"><i class="fa-solid fa-list"></i> All Change Requests</h5>
+
+<div class="table-responsive shadow">
+<table class="table table-hover align-middle text-center">
+<thead>
+<tr>
+<th>Title</th>
+<th>Category</th>
+<th>Risk</th>
+<th>Status</th>
+<th>Date</th>
+{% if role == "admin" %}
+<th>Created By</th>
+<th>Action</th>
+{% endif %}
+</tr>
+</thead>
+
+<tbody>
+{% for r in requests %}
+<tr>
+<td>{{ r.title }}</td>
+<td>{{ r.category }}</td>
+
+<td>
+{% if r.risk == "High" %}
+<span class="badge bg-danger">High</span>
+{% elif r.risk == "Medium" %}
+<span class="badge bg-warning text-dark">Medium</span>
+{% else %}
+<span class="badge bg-success">Low</span>
+{% endif %}
+</td>
+
+<td>
+{% if r.status == "Pending" %}
+<span class="badge bg-warning text-dark">Pending</span>
+{% elif r.status == "Approved" %}
+<span class="badge bg-success">Approved</span>
+{% else %}
+<span class="badge bg-danger">Rejected</span>
+{% endif %}
+</td>
+
+<td>{{ r.date.strftime('%d-%m-%Y') if r.date }}</td>
+
+{% if role == "admin" %}
+<td>{{ r.created_by }}</td>
+<td>
+<a href="/update/{{ r._id }}/Approved" class="btn btn-success btn-sm btn-custom">
+<i class="fa-solid fa-check"></i>
+</a>
+<a href="/update/{{ r._id }}/Rejected" class="btn btn-danger btn-sm btn-custom">
+<i class="fa-solid fa-xmark"></i>
+</a>
+</td>
+{% endif %}
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+</div>
+
+</body>
+</html>
