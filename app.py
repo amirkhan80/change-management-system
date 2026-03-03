@@ -1,5 +1,3 @@
-import os
-from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, session, flash
 from pymongo import MongoClient
 from datetime import datetime
@@ -8,37 +6,29 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-
-# ================== LOAD ENV ==================
-# ================== ENV VARIABLES ==================
-MONGO_URI = os.getenv("MONGO_URI")
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
-EMAIL_SENDER = os.getenv("EMAIL_SENDER")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret")
+import ssl
 
 app = Flask(__name__)
-app.secret_key = SECRET_KEY
+app.secret_key = "supersecretkey"
 
 # ================== MONGODB ==================
-try:
-    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-    client.server_info()
-    print("MongoDB Connected Successfully")
-except Exception as e:
-    print("MongoDB Connection Failed:", e)
+MONGO_URI = "mongodb+srv://amir:amir7890@cluster0.mb7ruie.mongodb.net/change_management_db?retryWrites=true&w=majority"
+client = MongoClient(MONGO_URI)
 
 db = client["change_management_db"]
 requests_collection = db["change_requests"]
 users_collection = db["users"]
 
+# ================== EMAIL CONFIG ==================
+ADMIN_EMAIL = "amirkhan91522@gmail.com"
+EMAIL_SENDER = "amirkhan91522@gmail.com"
+EMAIL_PASSWORD = "hvwdtkowejgjhpww"   # Gmail App Password
+
 # ================== EMAIL FUNCTION ==================
 def send_email(to_email, subject, body):
-    if not EMAIL_SENDER or not EMAIL_PASSWORD:
-        print("Email credentials missing")
-        return False
-
     try:
+        context = ssl.create_default_context()
+
         msg = MIMEMultipart()
         msg["From"] = EMAIL_SENDER
         msg["To"] = to_email
@@ -46,16 +36,16 @@ def send_email(to_email, subject, body):
         msg.attach(MIMEText(body, "html"))
 
         server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
+        server.starttls(context=context)
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        server.send_message(msg)
+        server.sendmail(EMAIL_SENDER, to_email, msg.as_string())
         server.quit()
 
-        print("Email sent to:", to_email)
+        print("✅ Email sent to:", to_email)
         return True
 
     except Exception as e:
-        print("Email Error:", e)
+        print("❌ Email Error:", e)
         return False
 
 # ================== HOME ==================
@@ -74,7 +64,8 @@ def home():
     return render_template("index.html",
                            requests=requests_data,
                            role=session["role"],
-                           username=session["username"])
+                           username=session["username"],
+                           admin_email=ADMIN_EMAIL)
 
 # ================== REGISTER ==================
 @app.route("/register", methods=["GET", "POST"])
@@ -85,10 +76,6 @@ def register():
         phone = request.form["phone"].strip()
         password = request.form["password"]
         confirm_password = request.form["confirm_password"]
-
-        if not username or not email or not phone or not password:
-            flash("All fields are required!", "danger")
-            return redirect("/register")
 
         if password != confirm_password:
             flash("Passwords do not match!", "danger")
@@ -106,7 +93,7 @@ def register():
             "role": "user"
         })
 
-        flash("Registration Successful! Please login.", "success")
+        flash("Registration Successful!", "success")
         return redirect("/login")
 
     return render_template("register.html")
@@ -126,7 +113,6 @@ def login():
             return redirect("/")
 
         flash("Invalid Username or Password!", "danger")
-        return redirect("/login")
 
     return render_template("login.html")
 
@@ -151,17 +137,18 @@ def add_request():
 
     requests_collection.insert_one(data)
 
+    # EMAIL TO ADMIN
     subject = "New Change Request Submitted"
     body = f"""
-    <h3>New Change Request Submitted</h3>
+    <h3>New Change Request</h3>
     <p><b>Title:</b> {data['title']}</p>
     <p><b>Risk:</b> {data['risk']}</p>
-    <p><b>Submitted By:</b> {data['created_by']}</p>
+    <p><b>User:</b> {data['created_by']}</p>
     """
 
     send_email(ADMIN_EMAIL, subject, body)
 
-    flash("Request submitted successfully!", "success")
+    flash("Request Submitted & Admin Notified!", "success")
     return redirect("/")
 
 # ================== UPDATE STATUS ==================
@@ -171,10 +158,6 @@ def update_status(id, status):
         return redirect("/")
 
     request_data = requests_collection.find_one({"_id": ObjectId(id)})
-
-    if not request_data:
-        flash("Request not found!", "danger")
-        return redirect("/")
 
     requests_collection.update_one(
         {"_id": ObjectId(id)},
@@ -188,11 +171,11 @@ def update_status(id, status):
         body = f"""
         <h3>Status Updated</h3>
         <p><b>Title:</b> {request_data['title']}</p>
-        <p><b>New Status:</b> {status}</p>
+        <p><b>Status:</b> {status}</p>
         """
         send_email(user_email, subject, body)
 
-    flash("Status updated successfully!", "success")
+    flash("Status Updated & User Notified!", "success")
     return redirect("/")
 
 # ================== LOGOUT ==================
@@ -201,7 +184,7 @@ def logout():
     session.clear()
     return redirect("/login")
 
-# ================== CREATE ADMIN ==================
+# ================== CREATE DEFAULT ADMIN ==================
 def create_admin():
     if not users_collection.find_one({"username": "admin"}):
         users_collection.insert_one({
@@ -215,5 +198,4 @@ def create_admin():
 create_admin()
 
 if __name__ == "__main__":
-    if __name__ == "__main__":
-     app.run()
+    app.run()
