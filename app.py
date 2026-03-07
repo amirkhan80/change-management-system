@@ -5,77 +5,79 @@ from bson.objectid import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import ssl
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
 # ================== MONGODB ==================
+
 MONGO_URI = "mongodb+srv://amir:amir7890@cluster0.mb7ruie.mongodb.net/change_management_db?retryWrites=true&w=majority"
 
-try:
-    client = MongoClient(MONGO_URI)
-    db = client["change_management_db"]
-    requests_collection = db["change_requests"]
-    users_collection = db["users"]
-    print("✅ MongoDB Connected")
-except Exception as e:
-    print("❌ MongoDB Error:", e)
+client = MongoClient(MONGO_URI)
+
+db = client["change_management_db"]
+requests_collection = db["change_requests"]
+users_collection = db["users"]
+
+print("MongoDB Connected")
 
 # ================== EMAIL CONFIG ==================
+
 ADMIN_EMAIL = "amirkhan91522@gmail.com"
 EMAIL_SENDER = "amirkhan91522@gmail.com"
-EMAIL_PASSWORD = "hvwdtkowejgjhpww"   # Gmail App Password
+EMAIL_PASSWORD = "hvwdtkowejgjhpww"
 
-# ================== SAFE EMAIL FUNCTION ==================
+# ================== EMAIL FUNCTION ==================
+
 def send_email(to_email, subject, body):
     try:
-        context = ssl.create_default_context()
 
-        msg = MIMEMultipart()
+        msg = MIMEText(body, "html")
+        msg["Subject"] = subject
         msg["From"] = EMAIL_SENDER
         msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "html"))
 
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls(context=context)
+        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=10)
+        server.starttls()
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.sendmail(EMAIL_SENDER, to_email, msg.as_string())
         server.quit()
 
-        print("✅ Email sent to:", to_email)
-    except Exception as e:
-        print("❌ Email Error:", e)
+        print("Email sent to:", to_email)
 
+    except Exception as e:
+        print("Email Error:", e)
 
 # ================== HOME ==================
+
 @app.route("/")
 def home():
+
     if "username" not in session:
         return redirect("/login")
 
-    try:
-        if session["role"] == "admin":
-            requests_data = list(requests_collection.find().sort("date", -1))
-        else:
-            requests_data = list(requests_collection.find(
-                {"created_by": session["username"]}
-            ).sort("date", -1))
-    except:
-        requests_data = []
+    if session["role"] == "admin":
+        requests_data = list(requests_collection.find().sort("date", -1))
+    else:
+        requests_data = list(requests_collection.find(
+            {"created_by": session["username"]}
+        ).sort("date", -1))
 
-    return render_template("index.html",
-                           requests=requests_data,
-                           role=session["role"],
-                           username=session["username"],
-                           admin_email=ADMIN_EMAIL)
+    return render_template(
+        "index.html",
+        requests=requests_data,
+        role=session["role"],
+        username=session["username"],
+        admin_email=ADMIN_EMAIL
+    )
 
 # ================== REGISTER ==================
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
+
     if request.method == "POST":
+
         username = request.form["username"]
         email = request.form["email"]
         phone = request.form["phone"]
@@ -104,17 +106,22 @@ def register():
     return render_template("register.html")
 
 # ================== LOGIN ==================
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+
     if request.method == "POST":
+
         username = request.form["username"]
         password = request.form["password"]
 
         user = users_collection.find_one({"username": username})
 
         if user and check_password_hash(user["password"], password):
+
             session["username"] = user["username"]
             session["role"] = user["role"]
+
             return redirect("/")
 
         flash("Invalid Username or Password!", "danger")
@@ -122,90 +129,95 @@ def login():
     return render_template("login.html")
 
 # ================== ADD REQUEST ==================
+
 @app.route("/add", methods=["POST"])
 def add_request():
+
     if "username" not in session:
         return redirect("/login")
 
-    try:
-        user = users_collection.find_one({"username": session["username"]})
+    user = users_collection.find_one({"username": session["username"]})
 
-        data = {
-            "category": request.form.get("category"),
-            "title": request.form["title"],
-            "description": request.form["description"],
-            "risk": request.form["risk"],
-            "status": "Pending",
-            "created_by": session["username"],
-            "created_by_email": user["email"],
-            "date": datetime.now()
-        }
+    user_email = user.get("email", "")
 
-        requests_collection.insert_one(data)
+    data = {
+        "category": request.form.get("category"),
+        "title": request.form.get("title"),
+        "description": request.form.get("description"),
+        "risk": request.form.get("risk"),
+        "status": "Pending",
+        "created_by": session["username"],
+        "created_by_email": user_email,
+        "date": datetime.now()
+    }
 
-        subject = "New Change Request Submitted"
-        body = f"""
-        <h3>New Change Request</h3>
-        <p><b>Title:</b> {data['title']}</p>
-        <p><b>Risk:</b> {data['risk']}</p>
-        <p><b>User:</b> {data['created_by']}</p>
-        """
+    requests_collection.insert_one(data)
 
-        send_email(ADMIN_EMAIL, subject, body)
+    subject = "New Change Request Submitted"
 
-        flash("Request Submitted & Admin Notified!", "success")
-    except Exception as e:
-        print("❌ Add Request Error:", e)
-        flash("Something went wrong!", "danger")
+    body = f"""
+    <h3>New Change Request</h3>
+    <p><b>Title:</b> {data['title']}</p>
+    <p><b>Risk:</b> {data['risk']}</p>
+    <p><b>User:</b> {data['created_by']}</p>
+    """
+
+    send_email(ADMIN_EMAIL, subject, body)
+
+    flash("Request Submitted Successfully!", "success")
 
     return redirect("/")
 
 # ================== UPDATE STATUS ==================
+
 @app.route("/update/<id>/<status>")
 def update_status(id, status):
+
     if "username" not in session or session["role"] != "admin":
         return redirect("/")
 
-    try:
-        request_data = requests_collection.find_one({"_id": ObjectId(id)})
+    request_data = requests_collection.find_one({"_id": ObjectId(id)})
 
-        if not request_data:
-            flash("Request not found!", "danger")
-            return redirect("/")
+    if not request_data:
+        flash("Request not found!", "danger")
+        return redirect("/")
 
-        requests_collection.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": {"status": status}}
-        )
+    requests_collection.update_one(
+        {"_id": ObjectId(id)},
+        {"$set": {"status": status}}
+    )
 
-        user_email = request_data.get("created_by_email")
+    user_email = request_data.get("created_by_email")
 
-        if user_email:
-            subject = "Your Change Request Status Updated"
-            body = f"""
-            <h3>Status Updated</h3>
-            <p><b>Title:</b> {request_data['title']}</p>
-            <p><b>Status:</b> {status}</p>
-            """
-            send_email(user_email, subject, body)
+    if user_email:
 
-        flash("Status Updated & User Notified!", "success")
+        subject = "Your Change Request Status Updated"
 
-    except Exception as e:
-        print("❌ Update Error:", e)
-        flash("Update failed!", "danger")
+        body = f"""
+        <h3>Status Updated</h3>
+        <p><b>Title:</b> {request_data['title']}</p>
+        <p><b>Status:</b> {status}</p>
+        """
+
+        send_email(user_email, subject, body)
+
+    flash("Status Updated!", "success")
 
     return redirect("/")
 
 # ================== LOGOUT ==================
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
-# ================== CREATE DEFAULT ADMIN ==================
+# ================== CREATE ADMIN ==================
+
 def create_admin():
+
     if not users_collection.find_one({"username": "admin"}):
+
         users_collection.insert_one({
             "username": "admin",
             "email": ADMIN_EMAIL,
@@ -215,6 +227,5 @@ def create_admin():
         })
 
 create_admin()
-
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
