@@ -37,7 +37,7 @@ def send_email(to_email, subject, body):
         msg["From"] = EMAIL_SENDER
         msg["To"] = to_email
 
-        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=10)
         server.starttls()
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.sendmail(EMAIL_SENDER, to_email, msg.as_string())
