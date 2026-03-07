@@ -13,18 +13,22 @@ app.secret_key = "supersecretkey"
 
 # ================== MONGODB ==================
 MONGO_URI = "mongodb+srv://amir:amir7890@cluster0.mb7ruie.mongodb.net/change_management_db?retryWrites=true&w=majority"
-client = MongoClient(MONGO_URI)
 
-db = client["change_management_db"]
-requests_collection = db["change_requests"]
-users_collection = db["users"]
+try:
+    client = MongoClient(MONGO_URI)
+    db = client["change_management_db"]
+    requests_collection = db["change_requests"]
+    users_collection = db["users"]
+    print("✅ MongoDB Connected")
+except Exception as e:
+    print("❌ MongoDB Error:", e)
 
 # ================== EMAIL CONFIG ==================
 ADMIN_EMAIL = "amirkhan91522@gmail.com"
 EMAIL_SENDER = "amirkhan91522@gmail.com"
 EMAIL_PASSWORD = "hvwdtkowejgjhpww"   # Gmail App Password
 
-# ================== EMAIL FUNCTION ==================
+# ================== SAFE EMAIL FUNCTION ==================
 def send_email(to_email, subject, body):
     try:
         context = ssl.create_default_context()
@@ -42,11 +46,9 @@ def send_email(to_email, subject, body):
         server.quit()
 
         print("✅ Email sent to:", to_email)
-        return True
-
     except Exception as e:
         print("❌ Email Error:", e)
-        return False
+
 
 # ================== HOME ==================
 @app.route("/")
@@ -54,12 +56,15 @@ def home():
     if "username" not in session:
         return redirect("/login")
 
-    if session["role"] == "admin":
-        requests_data = list(requests_collection.find().sort("date", -1))
-    else:
-        requests_data = list(requests_collection.find(
-            {"created_by": session["username"]}
-        ).sort("date", -1))
+    try:
+        if session["role"] == "admin":
+            requests_data = list(requests_collection.find().sort("date", -1))
+        else:
+            requests_data = list(requests_collection.find(
+                {"created_by": session["username"]}
+            ).sort("date", -1))
+    except:
+        requests_data = []
 
     return render_template("index.html",
                            requests=requests_data,
@@ -71,9 +76,9 @@ def home():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        username = request.form["username"].strip()
-        email = request.form["email"].strip()
-        phone = request.form["phone"].strip()
+        username = request.form["username"]
+        email = request.form["email"]
+        phone = request.form["phone"]
         password = request.form["password"]
         confirm_password = request.form["confirm_password"]
 
@@ -102,7 +107,7 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form["username"].strip()
+        username = request.form["username"]
         password = request.form["password"]
 
         user = users_collection.find_one({"username": username})
@@ -122,33 +127,37 @@ def add_request():
     if "username" not in session:
         return redirect("/login")
 
-    user = users_collection.find_one({"username": session["username"]})
+    try:
+        user = users_collection.find_one({"username": session["username"]})
 
-    data = {
-        "category": request.form.get("category"),
-        "title": request.form["title"],
-        "description": request.form["description"],
-        "risk": request.form["risk"],
-        "status": "Pending",
-        "created_by": session["username"],
-        "created_by_email": user["email"],
-        "date": datetime.now()
-    }
+        data = {
+            "category": request.form.get("category"),
+            "title": request.form["title"],
+            "description": request.form["description"],
+            "risk": request.form["risk"],
+            "status": "Pending",
+            "created_by": session["username"],
+            "created_by_email": user["email"],
+            "date": datetime.now()
+        }
 
-    requests_collection.insert_one(data)
+        requests_collection.insert_one(data)
 
-    # EMAIL TO ADMIN
-    subject = "New Change Request Submitted"
-    body = f"""
-    <h3>New Change Request</h3>
-    <p><b>Title:</b> {data['title']}</p>
-    <p><b>Risk:</b> {data['risk']}</p>
-    <p><b>User:</b> {data['created_by']}</p>
-    """
+        subject = "New Change Request Submitted"
+        body = f"""
+        <h3>New Change Request</h3>
+        <p><b>Title:</b> {data['title']}</p>
+        <p><b>Risk:</b> {data['risk']}</p>
+        <p><b>User:</b> {data['created_by']}</p>
+        """
 
-    send_email(ADMIN_EMAIL, subject, body)
+        send_email(ADMIN_EMAIL, subject, body)
 
-    flash("Request Submitted & Admin Notified!", "success")
+        flash("Request Submitted & Admin Notified!", "success")
+    except Exception as e:
+        print("❌ Add Request Error:", e)
+        flash("Something went wrong!", "danger")
+
     return redirect("/")
 
 # ================== UPDATE STATUS ==================
@@ -157,25 +166,35 @@ def update_status(id, status):
     if "username" not in session or session["role"] != "admin":
         return redirect("/")
 
-    request_data = requests_collection.find_one({"_id": ObjectId(id)})
+    try:
+        request_data = requests_collection.find_one({"_id": ObjectId(id)})
 
-    requests_collection.update_one(
-        {"_id": ObjectId(id)},
-        {"$set": {"status": status}}
-    )
+        if not request_data:
+            flash("Request not found!", "danger")
+            return redirect("/")
 
-    user_email = request_data.get("created_by_email")
+        requests_collection.update_one(
+            {"_id": ObjectId(id)},
+            {"$set": {"status": status}}
+        )
 
-    if user_email:
-        subject = "Your Change Request Status Updated"
-        body = f"""
-        <h3>Status Updated</h3>
-        <p><b>Title:</b> {request_data['title']}</p>
-        <p><b>Status:</b> {status}</p>
-        """
-        send_email(user_email, subject, body)
+        user_email = request_data.get("created_by_email")
 
-    flash("Status Updated & User Notified!", "success")
+        if user_email:
+            subject = "Your Change Request Status Updated"
+            body = f"""
+            <h3>Status Updated</h3>
+            <p><b>Title:</b> {request_data['title']}</p>
+            <p><b>Status:</b> {status}</p>
+            """
+            send_email(user_email, subject, body)
+
+        flash("Status Updated & User Notified!", "success")
+
+    except Exception as e:
+        print("❌ Update Error:", e)
+        flash("Update failed!", "danger")
+
     return redirect("/")
 
 # ================== LOGOUT ==================
